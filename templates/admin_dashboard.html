@@ -1,0 +1,635 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Command Center</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+
+    <style>
+        .student-feed img {
+            display: block;
+            width: 100%;       /* Make it fill its container's width */
+            height: auto;      /* THIS IS THE FIX: sets height automatically */
+            aspect-ratio: 4 / 3; /* Forces a 4:3 shape (most webcams) */
+            object-fit: cover; /* Prevents any stretching */
+            background-color: #111;}
+        /* --- Root Variables & Theme (Electric Blue / Magenta) --- */
+        :root {
+            --primary-glow: #00BFFF; /* Electric Blue */
+            --secondary-glow: #FF00FF; /* Magenta */
+            --error-glow: #FF4D4D; /* Red for alerts */
+            --warning-glow: #FFD700; /* Yellow for warnings */
+            --background-dark: #03011a; /* Very Dark Blue-Purple */
+            --card-bg: rgba(10, 5, 35, 0.6); /* Darker, slightly transparent */
+            --sidebar-bg: rgba(5, 2, 25, 0.7);
+            --border-color: rgba(0, 191, 255, 0.2); /* Blue border */
+            --border-color-active: rgba(0, 191, 255, 0.6);
+            --text-color: #e0f0ff; /* Lighter Blueish text */
+            --secondary-text: rgba(224, 240, 255, 0.7);
+            --font-display: 'Orbitron', sans-serif;
+            --font-body: 'Poppins', sans-serif;
+            --font-mono: 'Share Tech Mono', monospace;
+        }
+
+        /* --- Global & Body Setup --- */
+        body, html {
+            height: 100%;
+            margin: 0;
+            font-family: var(--font-body);
+            color: var(--text-color);
+            overflow: hidden;
+            background-color: var(--background-dark);
+            perspective: 1500px; /* Enable 3D */
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        /* --- Animated Background Canvas --- */
+        #bg-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            opacity: 0.7;
+        }
+
+        /* --- Subtle HUD Elements --- */
+        .hud-overlay {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 5;
+        }
+        /* Corner Brackets */
+        .hud-corner {
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            border: 2px solid var(--border-color);
+            opacity: 0.6;
+            animation: pulseGlow 4s infinite alternate ease-in-out;
+        }
+        .hud-corner.top-left { top: 20px; left: 20px; border-right: none; border-bottom: none; }
+        .hud-corner.top-right { top: 20px; right: 20px; border-left: none; border-bottom: none; }
+        .hud-corner.bottom-left { bottom: 20px; left: 20px; border-right: none; border-top: none; }
+        .hud-corner.bottom-right { bottom: 20px; right: 20px; border-left: none; border-top: none; }
+        
+        @keyframes pulseGlow {
+            from { box-shadow: 0 0 5px var(--border-color); opacity: 0.4; }
+            to { box-shadow: 0 0 15px var(--border-color); opacity: 0.7; }
+        }
+
+        /* --- Main Layout --- */
+        .container {
+            display: flex;
+            height: 100%;
+        }
+
+        /* --- Sidebar Styling --- */
+        .sidebar {
+            width: 280px;
+            flex-shrink: 0;
+            background: var(--sidebar-bg);
+            backdrop-filter: blur(20px) saturate(180%);
+            border-right: 1px solid var(--border-color);
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+            z-index: 2;
+            transform-style: preserve-3d; /* For 3D Parallax */
+            transition: transform 0.1s linear;
+            box-shadow: 5px 0 30px rgba(0,0,0,0.3);
+        }
+
+        .sidebar-header h2 {
+            font-family: var(--font-display);
+            margin: 0 0 40px 0;
+            font-size: 1.8rem;
+            color: var(--primary-glow);
+            text-shadow: 0 0 10px var(--primary-glow);
+            text-align: center;
+            letter-spacing: 1px;
+        }
+        
+        .nav-menu {
+            flex-grow: 1;
+        }
+
+        .nav-menu a {
+            display: flex;
+            align-items: center;
+            padding: 15px 20px;
+            color: var(--secondary-text);
+            text-decoration: none;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            transition: all 0.3s ease;
+            position: relative; /* For active indicator */
+            font-weight: 400; /* Lighter weight */
+        }
+        .nav-menu a svg {
+            margin-right: 15px;
+            width: 22px; /* Slightly smaller icons */
+            height: 22px;
+            stroke-width: 1.5;
+            opacity: 0.7;
+            transition: all 0.3s ease;
+        }
+
+        .nav-menu a:hover {
+            background-color: rgba(0, 191, 255, 0.1);
+            color: #fff;
+        }
+        .nav-menu a:hover svg {
+            opacity: 1;
+            filter: drop-shadow(0 0 5px var(--primary-glow));
+        }
+
+        .nav-menu a.active {
+            background-color: rgba(0, 191, 255, 0.15);
+            color: #fff;
+            box-shadow: inset 3px 0 0 var(--primary-glow); /* Active indicator line */
+            font-weight: 600;
+        }
+        .nav-menu a.active svg {
+            opacity: 1;
+            color: var(--primary-glow);
+            filter: drop-shadow(0 0 8px var(--primary-glow));
+        }
+
+        /* --- Main Content Area --- */
+        .main-content {
+            flex-grow: 1;
+            padding: 40px 50px;
+            overflow-y: auto;
+            position: relative;
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 50px;
+        }
+        .header h1 {
+            font-family: var(--font-display);
+            margin: 0;
+            font-size: 3rem; /* Larger Title */
+            color: #fff;
+            letter-spacing: 1px;
+            text-shadow: 0 0 15px rgba(0, 191, 255, 0.4);
+        }
+        
+        .logout-btn {
+            padding: 10px 25px;
+            background: transparent;
+            border: 2px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--secondary-text);
+            font-family: var(--font-display);
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+        }
+        .logout-btn:hover {
+            background: var(--primary-glow);
+            border-color: var(--primary-glow);
+            color: var(--background-dark);
+            box-shadow: 0 0 20px var(--primary-glow);
+            transform: translateY(-2px);
+        }
+
+        /* --- Proctoring Card --- */
+        .proctoring-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(15px) saturate(160%);
+            padding: 30px;
+            border-radius: 15px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            transform-style: preserve-3d;
+            transition: transform 0.1s linear, box-shadow 0.3s ease;
+            min-height: 50vh; /* Ensure it takes up significant space */
+            display: flex;
+            flex-direction: column;
+        }
+
+        .proctoring-card h2 {
+            font-family: var(--font-display);
+            font-weight: 600;
+            color: var(--text-color);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 15px;
+            margin: 0 0 30px 0;
+            font-size: 1.5rem;
+            letter-spacing: 0.5px;
+        }
+
+        /* --- Grid for Student Feeds/Placeholders --- */
+        #live-proctoring-grid {
+    flex-grow: 1;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 25px;
+    align-content: flex-start;
+
+    /* --- ADD THESE LINES --- */
+    max-width: 800px; /* Limit the grid's maximum width */
+    margin: 0 auto;   /* Center the grid within the card */
+    /* --- END ADDED LINES --- */
+}
+        
+
+        /* Styling for the central "Scanning" message when no students */
+        #no-students-message {
+            grid-column: 1 / -1; /* Span full width */
+            text-align: center;
+            font-size: 1.2rem;
+            color: var(--secondary-text);
+            padding: 50px 0;
+            font-family: var(--font-mono);
+            letter-spacing: 1px;
+            border: 1px dashed var(--border-color);
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.3);
+            min-height: 180px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: pulsePlaceholder 3s infinite ease-in-out;
+        }
+        
+        @keyframes pulsePlaceholder {
+            0%, 100% { border-color: var(--border-color); box-shadow: 0 0 10px rgba(0, 191, 255, 0.2); }
+            50% { border-color: var(--primary-glow); box-shadow: 0 0 20px rgba(0, 191, 255, 0.5); }
+        }
+
+
+        /* --- Actual Student Feed (Replace Placeholder) --- */
+        .student-feed {
+            background: #000; /* Black background for video */
+            border: 2px solid var(--border-color-active);
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+            box-shadow: 0 0 15px rgba(0, 191, 255, 0.3);
+            transition: all 0.3s ease;
+        }
+        
+        .student-feed img { /* Use img for base64 */
+            display: block;
+            width: 100%;
+            height: auto; 
+            aspect-ratio: 4 / 3; /* Force aspect ratio */
+            object-fit: cover;
+            background-color: #111;
+        }
+        
+        .student-info {
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px 12px;
+            font-family: var(--font-mono);
+            border-top: 1px solid var(--border-color);
+        }
+        .student-info-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.9rem;
+            margin-bottom: 10px;
+        }
+        .student-info-header .status.ok { color: var(--success-glow, #00FF7F); }
+        .student-info-header .status.alert { color: var(--error-glow); animation: blink 1s infinite; }
+        
+        @keyframes blink { 50% { opacity: 0.3; } }
+
+        .student-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .student-actions button {
+            flex-grow: 1;
+            padding: 6px 10px;
+            border: 1px solid;
+            border-radius: 4px;
+            background: transparent;
+            color: white;
+            cursor: pointer;
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            transition: all 0.2s ease;
+        }
+        .btn-warn {
+            border-color: var(--warning-glow);
+            color: var(--warning-glow);
+        }
+        .btn-warn:hover {
+            background: var(--warning-glow);
+            color: var(--background-dark);
+            box-shadow: 0 0 10px var(--warning-glow);
+        }
+        .btn-terminate {
+            border-color: var(--error-glow);
+            color: var(--error-glow);
+        }
+        .btn-terminate:hover {
+            background: var(--error-glow);
+            color: var(--background-dark);
+            box-shadow: 0 0 10px var(--error-glow);
+        }
+        
+        .student-alert { /* Class added by JS on alert */
+            border-color: var(--error-glow);
+            box-shadow: 0 0 25px var(--error-glow);
+            animation: alertPulse 1s infinite alternate;
+        }
+        @keyframes alertPulse {
+             from { border-color: var(--error-glow); box-shadow: 0 0 15px var(--error-glow); }
+             to { border-color: #FF4D4D; box-shadow: 0 0 30px #FF4D4D; }
+        }
+
+    </style>
+</head>
+<body>
+
+    <canvas id="bg-canvas"></canvas>
+    <div class="hud-overlay">
+        <span class="hud-corner top-left"></span>
+        <span class="hud-corner top-right"></span>
+        <span class="hud-corner bottom-left"></span>
+        <span class="hud-corner bottom-right"></span>
+    </div>
+
+    <div class="container">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h2>Admin Console</h2>
+            </div>
+            <nav class="nav-menu">
+                <a href="{{ url_for('admin_dashboard') }}" class="active">
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 1.085-1.085-1.085m0 0V3m0 13.5v.003V3m0 13.5A2.25 2.25 0 0010.5 18.75h3A2.25 2.25 0 0015.75 16.5m-7.5 0v-1.085l-1.085 1.085m1.085-1.085l1-1.085m-1 1.085v.003" /></svg>
+                    <span>Dashboard</span>
+                </a>
+                <a href="{{ url_for('admin_manage_students') }}">
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-4.67c.12-.318.232-.656.328-1.014a.75.75 0 011.498-.07c.096.358.208.71.328 1.014.453 1.196.992 2.303 1.634 3.336" /></svg>
+                    <span>Students</span>
+                </a>
+                <a href="{{ url_for('admin_manage_subjects') }}">
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" /></svg>
+                    <span>Subjects</span>
+                </a>
+                 <a href="{{ url_for('admin_results') }}">
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6a7.5 7.5 0 100 15 7.5 7.5 0 000-15zM21 21l-5.197-5.197" /></svg>
+                    <span>Results</span>
+                </a>
+                <a href="{{ url_for('admin_profile') }}">
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                    <span>Profile</span>
+                </a>
+            </nav>
+        </aside>
+
+        <main class="main-content" id="main-content">
+            <header class="header">
+                <h1>Command Center</h1>
+                <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
+            </header>
+            
+            <section class="proctoring-card" id="proctoring-card">
+                <h2>Live Proctoring</h2>
+                
+                <div id="live-proctoring-grid">
+                    <div id="no-students-message">
+                        SCANNING FOR ACTIVE EXAMS...
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        /**
+         * Animation 1: Plexus Network Background
+         * Particles connecting with lines based on proximity.
+         */
+        const canvas = document.getElementById('bg-canvas');
+        const ctx = canvas.getContext('2d');
+        let width, height, particles; const particleCount = 150; const connectionRadius = 120;
+        const particleSpeedFactor = 0.2; let mouse = { x: null, y: null, radius: 180 };
+        // --- [Plexus Particle Class & Animation Functions] ---
+        class Particle{constructor(){this.x=Math.random()*width;this.y=Math.random()*height;this.vx=(Math.random()-.5)*particleSpeedFactor;this.vy=(Math.random()-.5)*particleSpeedFactor;this.radius=Math.random()*1.5+.5}update(){this.x+=this.vx;this.y+=this.vy;if(this.x<0||this.x>width)this.vx*=-1;if(this.y<0||this.y>height)this.vy*=-1;if(mouse.x){const t=this.x-mouse.x,e=this.y-mouse.y,i=Math.sqrt(t*t+e*e);if(i<mouse.radius){const s=(mouse.radius-i)/mouse.radius;this.x+=t/i*s*1.5;this.y+=e/i*s*1.5}}}draw(){ctx.beginPath();ctx.arc(this.x,this.y,this.radius,0,2*Math.PI);ctx.fillStyle="rgba(0, 191, 255, 0.7)";ctx.fill()}}function initParticles(){width=canvas.width=window.innerWidth;height=canvas.height=window.innerHeight;particles=[];for(let t=0;t<particleCount;t++)particles.push(new Particle)}function drawConnections(){for(let t=0;t<particles.length;t++)for(let e=t+1;e<particles.length;e++){const i=particles[t].x-particles[e].x,s=particles[t].y-particles[e].y,o=Math.sqrt(i*i+s*s);if(o<connectionRadius){const a=1-o/connectionRadius;ctx.beginPath();ctx.moveTo(particles[t].x,particles[t].y);ctx.lineTo(particles[e].x,particles[e].y);const n=ctx.createLinearGradient(particles[t].x,particles[t].y,particles[e].x,particles[e].y);n.addColorStop(0,`rgba(0, 191, 255, ${a*.1})`);n.addColorStop(.5,`rgba(255, 0, 255, ${a*.3})`);n.addColorStop(1,`rgba(0, 191, 255, ${a*.1})`);ctx.strokeStyle=n;ctx.lineWidth=.5;ctx.stroke()}}}function animateParticles(){ctx.clearRect(0,0,width,height);for(const t of particles){t.update();t.draw()}drawConnections();requestAnimationFrame(animateParticles)}
+        // --- [End of Background JS] ---
+        window.addEventListener('resize', initParticles); window.addEventListener('mousemove', (e) => { mouse.x = e.clientX; mouse.y = e.clientY; }); window.addEventListener('mouseleave', () => { mouse.x = null; mouse.y = null; });
+        initParticles(); animateParticles();
+
+        /**
+         * Animation 2: 3D Parallax Tilt
+         */
+        const sidebar = document.getElementById('sidebar');
+        const proctoringCard = document.getElementById('proctoring-card');
+        const mainContent = document.getElementById('main-content');
+        const maxRotate = 6;
+        // --- [Parallax Functions] ---
+        function applyParallax(element, container, e, maxRot) { const rect = container.getBoundingClientRect(); const x = e.clientX - rect.left - rect.width / 2; const y = e.clientY - rect.top - rect.height / 2; const rotateY = (x / (rect.width / 2)) * maxRot; const rotateX = -(y / (rect.height / 2)) * maxRot; element.style.transform = `rotateY(${rotateY}deg) rotateX(${rotateX}deg) translateZ(5px)`; } function resetParallax(element) { element.style.transform = `rotateY(0deg) rotateX(0deg) translateZ(0)`; }
+        // --- [End Parallax Functions] ---
+        mainContent.addEventListener('mousemove', (e) => {
+            applyParallax(sidebar, mainContent, e, maxRotate * 0.5);
+            applyParallax(proctoringCard, mainContent, e, maxRotate);
+        });
+        mainContent.addEventListener('mouseleave', () => {
+            resetParallax(sidebar);
+            resetParallax(proctoringCard);
+        });
+
+
+        /**
+         * Functionality 3: Live Proctoring Grid Updates
+         */
+        const proctoringGrid = document.getElementById('live-proctoring-grid');
+        const noStudentsMessage = document.getElementById('no-students-message');
+
+        function addStudentFeed(rollNo, studentInfo) {
+            console.log(`ADMIN: Adding feed for ${rollNo}`);
+            if(noStudentsMessage) noStudentsMessage.style.display = 'none';
+
+            // Check if feed already exists
+            if (proctoringGrid.querySelector(`.student-feed[data-rollno="${rollNo}"]`)) {
+                 console.log(`ADMIN: Feed for ${rollNo} already exists.`);
+                 return;
+            }
+
+            const feedDiv = document.createElement('div');
+            feedDiv.className = 'student-feed';
+            feedDiv.dataset.rollno = rollNo;
+
+            const videoImg = document.createElement('img'); // Use img for base64
+            videoImg.alt = `Live feed for ${rollNo}`;
+            videoImg.src = "data:image/gif;base64,R0lGODlhAQABAIAAAAUEBAAAACwAAAAAAQABAAACAkQBADs="; // 1x1 black pixel
+
+            const infoDiv = document.createElement('div');
+            infoDiv.className = 'student-info';
+            infoDiv.innerHTML = `
+                <div class="student-info-header">
+                    <span>${studentInfo?.name || `Roll: ${rollNo}`}</span>
+                    <span class="status ok">Status: OK</span>
+                </div>
+                 <div class="student-actions">
+                    <button class="btn-warn" data-rollno="${rollNo}">Warn</button>
+                    <button class="btn-terminate" data-rollno="${rollNo}">Terminate</button>
+                 </div>
+            `;
+
+            feedDiv.appendChild(videoImg);
+            feedDiv.appendChild(infoDiv);
+            proctoringGrid.appendChild(feedDiv);
+        }
+
+        function removeStudentFeed(rollNo) {
+             console.log(`ADMIN: Removing feed for ${rollNo}`);
+             const feed = proctoringGrid.querySelector(`.student-feed[data-rollno="${rollNo}"]`);
+             if (feed) {
+                 feed.remove();
+             }
+             // Check if only the message div is left
+             if (proctoringGrid.querySelectorAll('.student-feed').length === 0) {
+                 if(noStudentsMessage) noStudentsMessage.style.display = 'flex';
+             }
+        }
+
+        function updateStudentVideo(rollNo, frameData) {
+            const feed = proctoringGrid.querySelector(`.student-feed[data-rollno="${rollNo}"]`);
+            if (feed) {
+                const videoImg = feed.querySelector('img');
+                if (videoImg) {
+                    videoImg.src = frameData;
+                }
+            }
+        }
+
+        function triggerStudentAlert(rollNo, alertMessage) {
+            console.log(`ADMIN: Alert for ${rollNo}: ${alertMessage}`);
+            const feed = proctoringGrid.querySelector(`.student-feed[data-rollno="${rollNo}"]`);
+            if (feed) {
+                feed.classList.add('student-alert');
+                const statusSpan = feed.querySelector('.student-info .status');
+                if (statusSpan) {
+                    statusSpan.textContent = `ALERT: ${alertMessage}`;
+                    statusSpan.classList.remove('ok');
+                    statusSpan.classList.add('alert');
+                }
+                // Clear alert visual after 5 seconds
+                setTimeout(() => {
+                    feed.classList.remove('student-alert');
+                    if (statusSpan) {
+                        statusSpan.textContent = 'Status: OK';
+                        statusSpan.classList.remove('alert');
+                        statusSpan.classList.add('ok');
+                    }
+                }, 5000);
+            }
+        }
+
+        // --- SocketIO Integration ---
+        const socket = io();
+
+        socket.on('connect', () => {
+            console.log('ADMIN: Connected to SocketIO. Joining admin room...');
+            socket.emit('admin_join');
+        });
+
+        socket.on('disconnect', () => {
+             console.log('ADMIN: Disconnected from SocketIO.');
+        });
+
+        // *** IMPROVED HANDLER ***
+        socket.on('active_students_list', (students) => {
+             console.log('ADMIN: Received initial active students:', students);
+             
+             // Remove all existing student feeds
+             proctoringGrid.querySelectorAll('.student-feed').forEach(feed => feed.remove());
+
+             if (students && Object.keys(students).length > 0) {
+                 noStudentsMessage.style.display = 'none';
+                 for (const rollNo in students) {
+                     addStudentFeed(rollNo, students[rollNo]);
+                 }
+             } else {
+                 noStudentsMessage.style.display = 'flex'; // Use flex to match new style
+             }
+        });
+
+        socket.on('student_started_exam', (data) => {
+             console.log('ADMIN: Student started:', data);
+             if(data && data.roll_no) {
+                 addStudentFeed(data.roll_no, data.info);
+             } else {
+                 console.error("ADMIN: Received invalid student_started_exam data", data);
+             }
+        });
+
+        socket.on('student_left_exam', (data) => {
+             console.log('ADMIN: Student left:', data);
+              if(data && data.roll_no) {
+                 removeStudentFeed(data.roll_no);
+              } else {
+                 console.error("ADMIN: Received invalid student_left_exam data", data);
+              }
+        });
+
+        socket.on('video_frame', (data) => {
+            if(data && data.roll_no && data.frame) {
+                // Use requestAnimationFrame to prevent layout thrashing
+                requestAnimationFrame(() => {
+                    updateStudentVideo(data.roll_no, data.frame);
+                });
+            }
+        });
+
+        socket.on('proctoring_alert', (data) => {
+            console.log('ADMIN: Received proctoring_alert:', data);
+            if(data && data.roll_no && data.alert) {
+                triggerStudentAlert(data.roll_no, data.alert);
+            }
+        });
+
+        // --- Event delegation for action buttons ---
+        proctoringGrid.addEventListener('click', (event) => {
+            const target = event.target;
+            
+            // Find the closest button with a rollno
+            const actionButton = target.closest('button[data-rollno]');
+            if (!actionButton) return; 
+
+            const rollNo = actionButton.dataset.rollno;
+
+            if (actionButton.classList.contains('btn-warn')) {
+                const message = prompt(`Enter warning for student ${rollNo}:`, "Focus on your exam. You are being monitored.");
+                if (message) {
+                    console.log(`ADMIN: Sending warning to ${rollNo}: ${message}`);
+                    socket.emit('send_warning', { student_roll_no: rollNo, message: message });
+                }
+            } else if (actionButton.classList.contains('btn-terminate')) {
+                if (confirm(`Are you sure you want to terminate the exam for student ${rollNo}? This is irreversible.`)) {
+                    console.log(`ADMIN: Terminating exam for ${rollNo}`);
+                    socket.emit('terminate_exam', { student_roll_no: rollNo });
+                }
+            }
+        });
+
+    </script>
+
+</body>
+</html>
